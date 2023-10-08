@@ -83,11 +83,6 @@ export default {
         document.getElementById("map"),
         mapOptions
       );
-
-      this.marker = new google.maps.Marker({
-        position: this.center,
-        map: this.map,
-      });
     },
     showAlert(message, type) {
       this.alert = [true, message, type];

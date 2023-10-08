@@ -1,6 +1,8 @@
 <template>
-  <div class="d-flex sidebar-shadow vh-100 overflow-scroll">
-    <div class="text-center px-2">
+  <div
+    class="d-flex sidebar-shadow vh-100 overflow-scroll justify-content-center"
+  >
+    <div class="text-center px-2 w-100">
       <nav
         aria-label="Search history pagination"
         class="mt-3"
@@ -44,13 +46,13 @@
           href="#"
           v-for="search in paginatedSearchHistory"
           :key="search.address"
-          class="list-group-item list-group-item py-2 ms-1 ripple"
+          class="list-group-item list-group-item-action py-2 ms-1 ripple w-100"
           @click="goToLocation(search.coords)"
         >
           <div class="d-flex">
             <input type="checkbox" v-model="search.selected" @click.stop />
             <div class="container mx-1">
-              <div class="row mb-1">
+              <div class="row mb-1 justify-content-center">
                 {{ search.address }}
               </div>
               <small class="row justify-content-center">{{
