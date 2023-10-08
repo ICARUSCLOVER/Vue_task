@@ -1,47 +1,31 @@
 <script setup>
+import SearchHistory from "@/components/SearchHistory.vue";
+import Search from "@/components/Search.vue";
+import { toRaw } from "vue";
 import axios from "axios";
 </script>
 
 <template>
-  <!-- <button @click="locationButton" class="btn">Your Location</button> -->
-  <div class="container text-center">
-    <div class="row justify-content-center position-relative z-1">
-      <div class="col-md-6">
-        <div class="card card-body">
-          <div class="input-group mb-3">
-            <input
-              type="text"
-              class="form-control"
-              placeholder="Enter address"
-              v-model="address"
-              ref="autocomplete"
-              id="autocomplete"
-            />
-            <button class="btn btn-light" type="button" @click="locationButton">
-              <span
-                class="spinner-grow spinner-grow-sm"
-                :class="{ 'visually-hidden': !spinner }"
-                aria-hidden="true"
-              ></span>
-              <span :class="{ 'visually-hidden': spinner }" role="status">
-                <i class="bi bi-crosshair"></i
-              ></span>
-            </button>
-            <button
-              class="btn btn-primary"
-              type="button"
-              @click="searchLocation"
-            >
-              <i class="bi bi-search"></i>
-            </button>
-          </div>
-        </div>
-      </div>
+  <div class="row vh-100">
+    <div id="sidebarMenu" class="col-3 p-0">
+      <SearchHistory
+        :searchHistory="searchHistory"
+        :goToLocation="goToLocation"
+        @update:searchHistory="updateSearchHistory"
+      />
     </div>
-    <div
-      id="map"
-      class="position-absolute top-0 start-0 bottom-0 end-0 bg-light"
-    ></div>
+    <div class="col-9 p-0">
+      <Search
+        :address="address"
+        @update:address="updateAddress"
+        :alert="alert"
+        :searchLocation="searchLocation"
+        :addSearchToHistory="addSearchToHistory"
+        :closeAlert="closeAlert"
+        :showAlert="showAlert"
+      />
+      <div id="map" class="h-100 bg-light"></div>
+    </div>
   </div>
 </template>
 
@@ -50,10 +34,10 @@ export default {
   name: "App",
   data() {
     return {
+      alert: [false, "", "success"],
       address: "",
-      spinner: false,
-      center: { lat: 0, lng: 0 },
-      markers: [{}],
+      center: { lat: 43.653226, lng: -79.3720226 },
+      searchHistory: [],
     };
   },
   mounted() {
@@ -75,15 +59,13 @@ export default {
 
       autocomplete.addListener("place_changed", () => {
         let place = autocomplete.getPlace();
-        console.log(place.formatted_address);
         if (place.formatted_address) {
           this.address = place.formatted_address;
           this.center = {
             lat: place.geometry.location.lat(),
             lng: place.geometry.location.lng(),
           };
-          this.map.setCenter(this.center);
-          this.marker.setPosition(this.center);
+          this.addSearchToHistory(place.formatted_address, this.center);
         } else {
           this.searchLocation();
         }
@@ -107,50 +89,15 @@ export default {
         map: this.map,
       });
     },
-    locationButton() {
-      this.spinner = true;
-
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            this.getAddress(
-              position.coords.latitude,
-              position.coords.longitude
-            );
-          },
-          (error) => {
-            console.error(error.messgae);
-          }
-        );
-      } else {
-        console.log("your browser dose not support geolocation API");
-        this.spinner = false;
-      }
+    showAlert(message, type) {
+      this.alert = [true, message, type];
     },
-    getAddress(latitude, longitude) {
-      axios
-        .get(
-          "https://maps.googleapis.com/maps/api/geocode/json?latlng=" +
-            latitude +
-            "," +
-            longitude +
-            "&key=AIzaSyD56S9OgTswBWjju-I2JJ16YwtDQN8RZOk"
-        )
-        .then((response) => {
-          if (response.data.error_message) {
-            console.log(response.data.error_message);
-          } else {
-            this.address = response.data.results[0].formatted_address;
-            this.center = { lat: latitude, lng: longitude };
-            this.map.setCenter(this.center);
-            this.marker.setPosition(this.center);
-          }
-          this.spinner = false;
-        });
+    closeAlert() {
+      this.alert = [false, "", "success"];
     },
     searchLocation() {
       if (!this.address) {
-        console.log("no add");
+        this.showAlert("Address is empty", "warning");
         return;
       }
       const placesService = new google.maps.places.PlacesService(this.map);
@@ -161,12 +108,84 @@ export default {
             lat: results[0].geometry.location.lat(),
             lng: results[0].geometry.location.lng(),
           };
-          this.map.setCenter(this.center);
-          this.marker.setPosition(this.center);
+          this.addSearchToHistory(results[0].formatted_address, this.center);
         } else {
-          console.error("Places search failed:", status);
+          this.showAlert("Places search failed", "warning");
         }
       });
+    },
+    addMarker(position) {
+      const marker = new google.maps.Marker({
+        position: position,
+        map: this.map,
+      });
+      return marker;
+    },
+    updateAddress(newAddress) {
+      this.address = newAddress;
+    },
+    goToLocation(position) {
+      this.map.setCenter(position);
+    },
+    addSearchToHistory(address, position) {
+      const exists = this.searchHistory.some(
+        (item) =>
+          item.position.lat === position.lat &&
+          item.position.lng === position.lng
+      );
+
+      if (!exists) {
+        this.goToLocation(position);
+        const marker = this.addMarker(position);
+        const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
+
+        axios
+          .get(
+            "https://maps.googleapis.com/maps/api/timezone/json?location=" +
+              position.lat +
+              "," +
+              position.lng +
+              "&timestamp=" +
+              Math.floor(Date.now() / 1000) +
+              "&key=" +
+              apiKey
+          )
+          .then((timezoneResponse) => {
+            const { timeZoneId, dstOffset, rawOffset } = timezoneResponse.data;
+            const currentTime = new Date();
+            const utcTime =
+              currentTime.getTime() + currentTime.getTimezoneOffset() * 60000;
+            const localTime = new Date(
+              utcTime + (rawOffset + dstOffset) * 1000
+            );
+
+            this.searchHistory.push({
+              address,
+              position,
+              marker,
+              timeZone: timeZoneId,
+              localTime: new Intl.DateTimeFormat("en-US", {
+                timeZone: timeZoneId,
+                hour: "numeric",
+                minute: "numeric",
+                second: "numeric",
+                hour12: true,
+              }).format(localTime),
+            });
+          })
+          .catch((error) => {
+            console.error("Error fetching time zone:", error);
+          });
+      }
+    },
+    updateSearchHistory(newSearchHistory) {
+      const deletedItems = this.searchHistory.filter(
+        (item) => !newSearchHistory.includes(item)
+      );
+      deletedItems.forEach((item) => {
+        toRaw(item.marker).setMap(null);
+      });
+      this.searchHistory = newSearchHistory;
     },
   },
 };
